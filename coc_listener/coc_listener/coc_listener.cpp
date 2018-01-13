@@ -7,6 +7,7 @@
 #include <Windows.h>
 #include <iostream>
 #include <thread>
+#include <boost/array.hpp>
 
 using namespace std;
 using namespace boost::asio::ip;
@@ -49,8 +50,7 @@ string GetClipboardText()
 }
 
 
-int main()
-{
+void copy_service() {
 	int i{ 0 };
 	string textOld{ GetClipboardText() };
 	short unsigned int port = 44567;
@@ -75,8 +75,8 @@ int main()
 		}
 
 		try {
-			string textNew{GetClipboardText()};
-			while(textOld == textNew)
+			string textNew{ GetClipboardText() };
+			while (textOld == textNew)
 			{
 				textNew = GetClipboardText();
 				this_thread::sleep_for(1s);
@@ -89,5 +89,59 @@ int main()
 		}
 		stream.close();
 	}
+}
+
+void alive_service() {
+	short unsigned int port = 44568;
+	char hostname[128];
+	gethostname(hostname, sizeof(hostname));
+
+	try {
+
+		boost::asio::io_service io_service;
+		udp::socket socket{ io_service, udp::endpoint(udp::v4(), port) };
+
+		while (true) {
+			boost::array<char, 6> recv_buf;
+			udp::endpoint remote_endpoint;
+			boost::system::error_code error;
+			socket.receive_from(boost::asio::buffer(recv_buf),
+				remote_endpoint, 0, error);
+
+			if (error && error != boost::asio::error::message_size)
+				throw boost::system::system_error(error);
+
+			for (int i = 0; i < recv_buf.size(); i++) {
+				cout << recv_buf[i];
+			}
+			
+			auto address = remote_endpoint.address();
+
+			tcp::iostream stream{ address.to_string(), to_string(port) };
+
+			try {
+				stream << hostname << " " << address.to_string();
+				stream.close();
+			}
+			catch (exception e) {
+				cout << e.what() << endl;
+			}
+
+		}
+	}
+	catch (exception e) {
+		cout << e.what() << endl;
+		return;
+	}
+}
+
+
+int main()
+{
+	thread copy_service_thread{ copy_service };
+	thread alive_service_thread{ alive_service };
+
+	copy_service_thread.join();
+	alive_service_thread.join();
 }
 
